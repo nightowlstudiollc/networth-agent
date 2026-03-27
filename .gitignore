@@ -1,0 +1,28 @@
+# Credentials
+*-credentials.json
+*-service-account.json
+gsheets-mcp-*.json
+.env
+.plaid_token.json
+.plaid_items.json
+.plaid_items_sandbox.json
+.plaid_client_user_id
+.plaid_user.json
+
+# Personal configuration (copy from *.example.* files to create these)
+accounts.yaml
+config.yaml
+.mcp.json
+.claude/secrets.op
+
+# Plaid proxy runtime
+.plaid_proxy.pid
+.plaid_mcp_proxy.log
+
+# Claude memory (may contain PII/sensitive data)
+memory/
+
+# Python
+.venv/
+__pycache__/
+*.pyc

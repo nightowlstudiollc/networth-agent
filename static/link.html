@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connect Bank Account - Financial Agent</title>
+    <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 { color: #333; }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+        }
+        button:hover { background: #0052a3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .status { margin-top: 16px; padding: 12px; border-radius: 4px; }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .status.info { background: #d1ecf1; color: #0c5460; }
+        .items-list { margin-top: 20px; }
+        .item {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .item:last-child { border-bottom: none; }
+        .item-name { font-weight: 600; }
+        .item-meta { font-size: 14px; color: #666; margin-top: 4px; }
+        .item-actions { margin-top: 8px; }
+        .item-actions button {
+            width: auto;
+            padding: 6px 12px;
+            font-size: 14px;
+            background: #28a745;
+            margin-right: 8px;
+        }
+        .item-actions button:hover { background: #218838; }
+        .item-actions button.secondary {
+            background: #6c757d;
+        }
+        .item-actions button.secondary:hover { background: #545b62; }
+        .product-badge {
+            display: inline-block;
+            background: #e9ecef;
+            color: #495057;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-right: 4px;
+        }
+        .product-badge.investments { background: #d4edda; color: #155724; }
+    </style>
+</head>
+<body>
+    <h1>Financial Agent</h1>
+
+    <div class="card">
+        <h2>User Settings</h2>
+        <p>Set your phone number to enable faster reconnection (reduces 2FA prompts).</p>
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <input type="tel" id="phone-input" placeholder="+1 (555) 123-4567" style="flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px;">
+            <button onclick="setPhoneNumber()" style="width: auto;">Save</button>
+        </div>
+        <div id="phone-status" class="status" style="display: none;"></div>
+    </div>
+
+    <div class="card">
+        <h2>Connect a Bank Account</h2>
+        <p>Link your bank account to track balances and transactions.</p>
+        <button id="link-button" onclick="openLink()">Connect Account</button>
+        <div id="status"></div>
+    </div>
+
+    <div class="card">
+        <h2>Connected Accounts</h2>
+        <div id="items-list" class="items-list">
+            <p>Loading...</p>
+        </div>
+        <button onclick="loadItems()" style="margin-top: 16px; background: #666;">Refresh List</button>
+    </div>
+
+    <script>
+        let linkHandler = null;
+        let updateLinkHandler = null;
+        let currentUpdateItemId = null;
+
+        async function addProducts(itemId, institutionName) {
+            showStatus(`Initializing update mode for ${institutionName}...`, 'info');
+            currentUpdateItemId = itemId;
+
+            try {
+                const response = await fetch('/api/create_update_link_token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        item_id: itemId,
+                        additional_products: ['investments']
+                    })
+                });
+                const data = await response.json();
+
+                if (data.error) {
+                    showStatus('Error: ' + JSON.stringify(data.error), 'error');
+                    return;
+                }
+
+                updateLinkHandler = Plaid.create({
+                    token: data.link_token,
+                    onSuccess: async (public_token, metadata) => {
+                        showStatus('Updating item products...', 'info');
+                        try {
+                            // Refresh item info to get updated products
+                            const updateResponse = await fetch('/api/update_item_products', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ item_id: currentUpdateItemId })
+                            });
+                            const updateData = await updateResponse.json();
+
+                            if (updateData.error) {
+                                showStatus('Error: ' + JSON.stringify(updateData.error), 'error');
+                            } else {
+                                const added = updateData.added_products || [];
+                                if (added.length > 0) {
+                                    showStatus(`Added products to ${updateData.institution}: ${added.join(', ')}`, 'success');
+                                } else {
+                                    showStatus(`Updated ${updateData.institution} - products: ${updateData.products.join(', ')}`, 'success');
+                                }
+                                loadItems();
+                            }
+                        } catch (e) {
+                            showStatus('Error updating item: ' + e.message, 'error');
+                        }
+                    },
+                    onExit: (err, metadata) => {
+                        if (err) {
+                            showStatus('Update exited with error: ' + (err.display_message || err.error_message), 'error');
+                        }
+                    },
+                    onEvent: (eventName, metadata) => {
+                        console.log('Update Link event:', eventName, metadata);
+                    }
+                });
+
+                updateLinkHandler.open();
+            } catch (e) {
+                showStatus('Error initializing update mode: ' + e.message, 'error');
+            }
+        }
+
+        async function initLink() {
+            const button = document.getElementById('link-button');
+            button.disabled = true;
+            button.textContent = 'Initializing...';
+
+            try {
+                const response = await fetch('/api/create_link_token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await response.json();
+
+                if (data.error) {
+                    showStatus('Error: ' + JSON.stringify(data.error), 'error');
+                    return;
+                }
+
+                linkHandler = Plaid.create({
+                    token: data.link_token,
+                    onSuccess: async (public_token, metadata) => {
+                        showStatus('Exchanging token...', 'info');
+                        try {
+                            const exchangeResponse = await fetch('/api/exchange_token', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    public_token: public_token,
+                                    institution: metadata.institution
+                                })
+                            });
+                            const exchangeData = await exchangeResponse.json();
+
+                            if (exchangeData.error) {
+                                showStatus('Error: ' + JSON.stringify(exchangeData.error), 'error');
+                            } else {
+                                showStatus(`Connected: ${exchangeData.institution}`, 'success');
+                                loadItems();
+                            }
+                        } catch (e) {
+                            showStatus('Error exchanging token: ' + e.message, 'error');
+                        }
+                    },
+                    onExit: (err, metadata) => {
+                        if (err) {
+                            showStatus('Link exited with error: ' + err.display_message, 'error');
+                        }
+                    },
+                    onEvent: (eventName, metadata) => {
+                        console.log('Link event:', eventName, metadata);
+                    }
+                });
+
+                button.disabled = false;
+                button.textContent = 'Connect Account';
+            } catch (e) {
+                showStatus('Error initializing Link: ' + e.message, 'error');
+                button.textContent = 'Retry';
+                button.disabled = false;
+            }
+        }
+
+        function openLink() {
+            if (linkHandler) {
+                linkHandler.open();
+            } else {
+                initLink().then(() => {
+                    if (linkHandler) linkHandler.open();
+                });
+            }
+        }
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.className = 'status ' + type;
+            status.textContent = message;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function loadItems() {
+            const container = document.getElementById('items-list');
+            try {
+                const response = await fetch('/api/items');
+                const items = await response.json();
+
+                if (items.length === 0) {
+                    container.textContent = '';
+                    const p = document.createElement('p');
+                    p.textContent = 'No accounts connected yet.';
+                    container.appendChild(p);
+                    return;
+                }
+
+                container.textContent = '';
+                items.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'item';
+
+                    const nameDiv = document.createElement('div');
+                    nameDiv.className = 'item-name';
+                    nameDiv.textContent = item.institution_name || 'Unknown';
+
+                    // Products as badges
+                    const productsDiv = document.createElement('div');
+                    productsDiv.style.marginTop = '4px';
+                    const products = item.products || [];
+                    products.forEach(p => {
+                        const badge = document.createElement('span');
+                        badge.className = 'product-badge' + (p === 'investments' ? ' investments' : '');
+                        badge.textContent = p;
+                        productsDiv.appendChild(badge);
+                    });
+
+                    const metaDiv = document.createElement('div');
+                    metaDiv.className = 'item-meta';
+                    const consent = item.consent_expiration
+                        ? 'Consent expires: ' + item.consent_expiration
+                        : 'No consent expiration';
+                    metaDiv.innerHTML = [
+                        'Item ID: ' + escapeHtml(item.item_id || ''),
+                        'Connected: ' + escapeHtml(item.created_at || 'Unknown'),
+                        escapeHtml(consent)
+                    ].join('<br>');
+
+                    // Actions
+                    const actionsDiv = document.createElement('div');
+                    actionsDiv.className = 'item-actions';
+
+                    // Only show "Add Investments" if not already enabled
+                    if (!products.includes('investments')) {
+                        const addBtn = document.createElement('button');
+                        addBtn.textContent = '+ Add Investments';
+                        addBtn.onclick = () => addProducts(item.item_id, item.institution_name);
+                        actionsDiv.appendChild(addBtn);
+                    }
+
+                    div.appendChild(nameDiv);
+                    div.appendChild(productsDiv);
+                    div.appendChild(metaDiv);
+                    div.appendChild(actionsDiv);
+                    container.appendChild(div);
+                });
+            } catch (e) {
+                container.textContent = '';
+                const p = document.createElement('p');
+                p.textContent = 'Error loading items: ' + e.message;
+                container.appendChild(p);
+            }
+        }
+
+        async function loadUserInfo() {
+            try {
+                const response = await fetch('/api/get_user_info');
+                const data = await response.json();
+                const phoneInput = document.getElementById('phone-input');
+                const phoneStatus = document.getElementById('phone-status');
+
+                if (data.phone_set) {
+                    phoneInput.placeholder = `Phone set (***${data.phone_last_4})`;
+                    phoneStatus.textContent = `Phone saved ending in ${data.phone_last_4} - returning user experience enabled`;
+                    phoneStatus.className = 'status success';
+                    phoneStatus.style.display = 'block';
+                }
+            } catch (e) {
+                console.error('Error loading user info:', e);
+            }
+        }
+
+        async function setPhoneNumber() {
+            const phoneInput = document.getElementById('phone-input');
+            const phoneStatus = document.getElementById('phone-status');
+            const phone = phoneInput.value.trim();
+
+            if (!phone) {
+                phoneStatus.textContent = 'Please enter a phone number';
+                phoneStatus.className = 'status error';
+                phoneStatus.style.display = 'block';
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/set_phone_number', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone_number: phone })
+                });
+                const data = await response.json();
+
+                if (data.error) {
+                    phoneStatus.textContent = 'Error: ' + data.error;
+                    phoneStatus.className = 'status error';
+                } else {
+                    phoneStatus.textContent = `Phone saved (***${data.phone_last_4}) - returning user experience enabled`;
+                    phoneStatus.className = 'status success';
+                    phoneInput.value = '';
+                    phoneInput.placeholder = `Phone set (***${data.phone_last_4})`;
+                }
+                phoneStatus.style.display = 'block';
+            } catch (e) {
+                phoneStatus.textContent = 'Error: ' + e.message;
+                phoneStatus.className = 'status error';
+                phoneStatus.style.display = 'block';
+            }
+        }
+
+        // Initialize on load
+        loadUserInfo();
+        initLink();
+        loadItems();
+    </script>
+</body>
+</html>

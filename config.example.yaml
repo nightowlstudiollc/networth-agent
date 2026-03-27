@@ -1,0 +1,21 @@
+# config.example.yaml — Template for runtime configuration
+# Copy to config.yaml (gitignored) and fill in your real values.
+#
+# google_sheets.service_account_path:
+#   Path to the JSON key file you downloaded from Google Cloud Console.
+#   The service account needs "Editor" access to your spreadsheet.
+#
+# google_sheets.drive_folder_id:
+#   The ID from your Google Drive folder URL:
+#   https://drive.google.com/drive/folders/FOLDER_ID_IS_HERE
+#
+# zillow.url:
+#   Navigate to your property on zillow.com and copy the full URL.
+#   Example: https://www.zillow.com/homedetails/123-Main-St-Anytown-CA-90210/12345678_zpid/
+
+google_sheets:
+  service_account_path: "/path/to/your/service-account.json"
+  drive_folder_id: "YOUR_DRIVE_FOLDER_ID"
+
+zillow:
+  url: "https://www.zillow.com/homedetails/YOUR-ADDRESS/YOUR_ZPID_zpid/"

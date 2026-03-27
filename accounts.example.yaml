@@ -1,0 +1,44 @@
+# accounts.example.yaml — Template for account-to-spreadsheet mapping
+# Copy to accounts.yaml (gitignored) and fill in your real values.
+#
+# How to find your values:
+#   - spreadsheet_id: the long ID in your Google Sheet URL
+#   - institution: the name Plaid uses for this institution
+#   - name: the account name Plaid returns (run plaid_accounts.py to see these)
+#   - mask: last 4 digits of the account number
+#   - row: row number in your net worth spreadsheet
+#   - label: human-readable label (for reference only, not written to sheet)
+#   - type: asset or liability
+#
+# Sign convention: assets positive, liabilities NEGATIVE (Plaid returns
+# credit/loan balances as negative — use them as-is).
+#
+# Columns written: B (balance), C (checkmark ✔️)
+# Do NOT configure column E (contains formulas).
+
+spreadsheet_id: "YOUR_SPREADSHEET_ID"
+
+accounts:
+  # Example checking account
+  - institution: "My Bank"
+    name: "CHECKING"
+    mask: "1234"
+    row: 5
+    label: "Primary Checking"
+    type: asset
+
+  # Example credit card (liability — will be negative)
+  - institution: "My Bank"
+    name: "CREDIT CARD"
+    mask: "5678"
+    row: 20
+    label: "Rewards Visa"
+    type: liability
+
+  # Investment account example (uses holdings product in Plaid)
+  - institution: "Brokerage Name"
+    name: "Individual Brokerage"
+    mask: "9012"
+    row: 10
+    label: "Taxable Brokerage"
+    type: asset

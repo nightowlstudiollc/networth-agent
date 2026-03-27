@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "google-sheets": {
+      "command": "/opt/homebrew/bin/uvx",
+      "args": ["mcp-google-sheets@latest"],
+      "env": {
+        "SERVICE_ACCOUNT_PATH": "/path/to/your/service-account.json",
+        "DRIVE_FOLDER_ID": "YOUR_DRIVE_FOLDER_ID"
+      }
+    },
+    "plaid-dashboard": {
+      "type": "sse",
+      "url": "http://127.0.0.1:8788/mcp/sse"
+    }
+  }
+}
