@@ -2,34 +2,50 @@
 
 This project uses a **one-way sync** model:
 
-- `financial-agent` (private): personal instance with `accounts.yaml`, `config.yaml`,
-  and `.claude/secrets.op` containing real data — never committed
-- Public repo (default: `networth-agent`): open-source version, code only
+- `financial-agent` (private): personal instance, all development happens here
+- `networth-agent` (public): open-source version, receives synced code via PRs
 
-The public repo name and URL are configured in **one place**: the `PUBLIC_REPO_URL`
-variable at the top of `sync-to-public.sh`. Change it there if you rename the project.
+The public repo name lives in **one place**: `PUBLIC_REPO` at the top of
+`sync-to-public.sh`. Change it there (and update the `public` git remote) if
+you rename the project.
 
-## First-time setup
+## Workflow
 
-Add the public repo as a git remote so the sync script can use it directly:
+Changes never push directly to `main` on the public repo. Instead the sync
+script creates a branch, commits, pushes, and opens a PR. Pre-push hooks run
+normally; you merge when ready.
 
-```bash
-git remote add public https://github.com/nightowlstudiollc/networth-agent.git
-# Replace the URL above if you rename the repo
+```
+private main ──► sync-to-public.sh ──► public branch ──► PR ──► public main
 ```
 
-## Syncing changes
+## Setup
+
+Requires the [GitHub CLI](https://cli.github.com) authenticated:
 
 ```bash
-# Preview what will be copied (dry run, safe to run any time)
+brew install gh
+gh auth login
+```
+
+Add the public repo as a git remote (one-time):
+
+```bash
+git remote add public git@github.com:nightowlstudiollc/networth-agent.git
+```
+
+## Usage
+
+```bash
+# Preview what would change (safe, no writes)
 ./sync-to-public.sh
 
-# Apply and push
+# Create branch, commit, push, open PR
 ./sync-to-public.sh --push --message "feat: add launchd scheduling"
 ```
 
-The script uses `rsync --delete`, so files removed from the private repo are
-also removed from the public repo on the next sync.
+The script creates a branch named `sync/YYYY-MM-DD-<slug>`, opens a PR against
+`main`, and prints the PR URL. Merge it manually after review.
 
 ## What's personal vs. public
 
@@ -50,6 +66,5 @@ also removed from the public repo on the next sync.
 ## Renaming the project
 
 1. Rename the repo on GitHub (Settings → Repository name)
-2. Update `PUBLIC_REPO_URL` in `sync-to-public.sh`
-3. Update the `public` remote: `git remote set-url public <new-url>`
-4. Update the URL in `README.md`
+2. Update `PUBLIC_REPO` in `sync-to-public.sh`
+3. Update the `public` remote: `git remote set-url public git@github.com:<new-path>.git`

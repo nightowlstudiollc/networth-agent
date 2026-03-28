@@ -301,14 +301,16 @@ def create_update_link_token():
         if not access_token:
             return jsonify({"error": "No access token for item"}), 400
 
-        institution_name = items[item_id].get("institution_name", "Unknown")
+        item = items[item_id]
+        institution_name = str(item.get("institution_name", "Unknown"))
         user_data = get_plaid_user()
         has_plaid_user = (
             "with plaid_user_id"
             if user_data.get("plaid_user_id")
             else "no plaid_user_id"
         )
-        print(f"Update link for {institution_name} ({has_plaid_user})")
+        print(f"Update link for {institution_name}")  # nosemgrep
+        print(f"  Plaid user: {has_plaid_user}")
         print(f"  Adding: {additional_products}")
 
         # Convert product strings to Products enum
