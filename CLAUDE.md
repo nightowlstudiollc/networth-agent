@@ -2,9 +2,36 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Repo Model — Read This First
+
+This is the **private development repo** (`nightowlstudiollc/financial-agent`). All
+development happens here. There is a companion **public repo**
+(`nightowlstudiollc/networth-agent`) that contains the same code but no personal data.
+
+**Never commit personal configuration to this repo.** The following files are
+gitignored and must stay that way — they live only on local disk:
+
+- `accounts.yaml` — account-to-spreadsheet mapping with real institution names and masks
+- `config.yaml` — Zillow URL, Google service account path, Drive folder ID
+- `.mcp.json` — MCP server config with local paths
+- `.claude/secrets.op` — 1Password secret references
+
+When code changes are ready to publish, sync to the public repo:
+
+```bash
+./sync-to-public.sh --push --message "feat: description of change"
+```
+
+Do not push directly to the public repo. Do not suggest committing the files
+listed above. If a task requires editing those files, edit them on disk — do not
+stage or commit them.
+
+---
+
 ## Project Overview
 
-Financial agent that automates net worth tracking by pulling balances from financial institutions and updating a Google Sheet.
+Financial agent that automates net worth tracking by pulling balances from financial
+institutions and updating a Google Sheet.
 
 ## IMPORTANT NOTE
 
@@ -71,6 +98,10 @@ PLAID_ENV=production python plaid_link_server.py # Production (needs approval)
 # List connected Plaid accounts
 PLAID_ENV=sandbox python plaid_accounts.py
 
+# Sync code changes to the public repo
+./sync-to-public.sh                              # Dry run — preview changes
+./sync-to-public.sh --push --message "feat: …"  # Publish
+
 # Install dependencies (if needed)
 uv venv && source .venv/bin/activate && uv pip install -r requirements.txt
 ```
@@ -78,18 +109,20 @@ uv venv && source .venv/bin/activate && uv pip install -r requirements.txt
 ## Project Structure
 
 ```
-.claude/secrets.op     # 1Password secret references (op:// paths) — gitignored
+.claude/secrets.op     # 1Password secret references — gitignored, local only
 .claude/pre-launch.sh  # Pre-launch hook for Plaid OAuth token
-.mcp.json              # MCP server configuration — gitignored (copy from .mcp.example.json)
-accounts.yaml          # Account-to-spreadsheet mapping — gitignored (copy from accounts.example.yaml)
-config.yaml            # Runtime config (Zillow URL, GSheets paths) — gitignored (copy from config.example.yaml)
-plaid_balance.py       # Plaid balance fetcher (banks/cards/loans)
+.mcp.json              # MCP server config — gitignored, local only (copy from .mcp.example.json)
+accounts.yaml          # Account mapping — gitignored, local only (copy from accounts.example.yaml)
+config.yaml            # Runtime config — gitignored, local only (copy from config.example.yaml)
+plaid_balance.py       # Plaid balance fetcher (banks/cards/loans/investments)
 coinbase_balance.py    # Coinbase balance fetcher
 mercury_balance.py     # Mercury balance fetcher
 zillow_balance.py      # Zillow Zestimate fetcher
 plaid_token.py         # Plaid OAuth token manager
+plaid_mcp_proxy.py     # Local proxy for transparent Plaid token refresh
 plaid_link_server.py   # Flask server for Plaid Link flow
 plaid_accounts.py      # Display connected Plaid accounts
+sync-to-public.sh      # One-way sync to nightowlstudiollc/networth-agent
 static/link.html       # Plaid Link UI
 requirements.txt       # Python dependencies
 .venv/                 # Python virtual environment (not committed)
@@ -108,7 +141,8 @@ Do NOT write to column E (contains formulas).
 and contains personal account details. The public template is `accounts.example.yaml`.
 
 Key fields in each account entry:
-- `institution`: Plaid institution name
+
+- `institution`: Plaid institution name (use exact name returned by `plaid_accounts.py`)
 - `name`: Account name as returned by Plaid
 - `mask`: Last 4 digits of account number
 - `row`: Spreadsheet row number to update
