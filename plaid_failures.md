@@ -4,7 +4,7 @@ Common institutions that fail to connect via Plaid Link.
 
 | Category | Institution | Error | Notes |
 |----------|-------------|-------|-------|
-| 2FA incompatibility | American Express | "Something went wrong" in Link UI | Known Plaid+Amex 2FA incompatibility |
+| ~~Resolved~~ | ~~American Express~~ | ~~2FA incompatibility~~ | Connected successfully 2026-04-07 |
 | Not supported | Fidelity | Not supported | Fidelity doesn't work with Plaid |
 | Not supported | Apple Card | Not supported | Apple doesn't work with aggregators |
 | Not supported | Mr Cooper / Rocket Mortgage | Not supported | Absorbed by Rocket, no longer works with Plaid |
