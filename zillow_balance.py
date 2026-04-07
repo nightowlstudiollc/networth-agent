@@ -14,13 +14,15 @@ load_dotenv()
 
 # Zillow URL for the property.
 # Set via ZILLOW_URL environment variable, or config.yaml (zillow.url).
-# To find your URL: navigate to your property on zillow.com and copy the full URL.
+# To find your URL: navigate to your property on
+# zillow.com and copy the full URL.
 ZILLOW_URL = os.getenv("ZILLOW_URL", "")
 
 # Load from config.yaml if env var not set
 if not ZILLOW_URL:
     try:
         import yaml
+
         config_path = Path(__file__).parent / "config.yaml"
         if config_path.exists():
             with open(config_path) as f:
@@ -33,7 +35,7 @@ HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/122.0.0.0 Safari/537.36"
+        "Chrome/134.0.0.0 Safari/537.36"
     ),
     "Accept": (
         "text/html,application/xhtml+xml,application/xml;"
@@ -42,7 +44,9 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
     "Accept-Encoding": "gzip, deflate, br",
     "Cache-Control": "max-age=0",
-    "Sec-Ch-Ua": '"\"Chromium\";v=\"122\", \"Google Chrome\";v=\"122\"',
+    "Sec-Ch-Ua": (
+        '"Chromium";v="134", "Google Chrome";v="134",' ' "Not:A-Brand";v="24"'
+    ),
     "Sec-Ch-Ua-Mobile": "?0",
     "Sec-Ch-Ua-Platform": '"macOS"',
     "Sec-Fetch-Dest": "document",
@@ -90,13 +94,37 @@ def get_zestimate(zillow_url: str) -> dict:
         try:
             data = json.loads(json_match.group(1))
             props = data.get("props", {}).get("pageProps", {})
-            initial = props.get("initialData", {})
 
             property_data = None
+
+            # Path 1: legacy initialData.property / aboveTheFold
+            initial = props.get("initialData", {})
             if "property" in initial:
                 property_data = initial["property"]
             elif "aboveTheFold" in initial:
                 property_data = initial["aboveTheFold"]
+
+            # Path 2: gdpClientCache (GraphQL cache since ~2026)
+            if not property_data:
+                comp = props.get("componentProps", {})
+                cache_raw = comp.get("gdpClientCache")
+                if isinstance(cache_raw, str) and cache_raw:
+                    cache = json.loads(cache_raw)
+                elif isinstance(cache_raw, dict):
+                    cache = cache_raw
+                else:
+                    cache = {}
+                for entry in cache.values():
+                    try:
+                        if isinstance(entry, str):
+                            obj = json.loads(entry)
+                        else:
+                            obj = entry
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+                    if isinstance(obj, dict) and "property" in obj:
+                        property_data = obj["property"]
+                        break
 
             if property_data:
                 result["zestimate"] = property_data.get("zestimate")
@@ -136,7 +164,10 @@ def main():
 
     if not url:
         print("Usage: python zillow_balance.py <zillow_url>")
-        print("Or set ZILLOW_URL environment variable, or configure zillow.url in config.yaml")
+        print(
+            "Or set ZILLOW_URL environment variable,"
+            " or configure zillow.url in config.yaml"
+        )
         sys.exit(1)
 
     try:

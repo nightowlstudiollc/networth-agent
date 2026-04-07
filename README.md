@@ -43,7 +43,6 @@ Plaid does not support these as of early 2026:
 | Institution | Reason |
 |------------|--------|
 | Fidelity | Not supported by Plaid |
-| American Express | 2FA incompatibility |
 | Apple Card | Proprietary auth |
 | Synchrony / CareCredit | Not available |
 | Affirm / Klarna | BNPL not available |
