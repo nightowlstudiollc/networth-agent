@@ -33,9 +33,22 @@ stage or commit them.
 Financial agent that automates net worth tracking by pulling balances from financial
 institutions and updating a Google Sheet.
 
-## IMPORTANT NOTE
+## Cost-aware balance fetching
 
-*NEVER* use cached balances from previous runs. *ALWAYS* fetch current balances.
+`plaid_balance.py` has two modes controlled by CLI flags:
+
+| Flag | Endpoint | Cost | When to use |
+|------|----------|------|-------------|
+| `--force` | `accounts/balance/get` | $0.10/item | **Weekly spreadsheet update only** |
+| `--cached` | `accounts/get` | Free | Dev, debug, inspection, any non-update session |
+| *(no flag)* | `accounts/balance/get` | $0.10/item | Allowed once per 23 h; exits with error if rate limit is active |
+
+**Rule:** use `--force` only when writing balances to the spreadsheet. Use `--cached` for everything else — inspecting data, troubleshooting code, testing changes. Never run a real-time fetch just to look at output.
+
+```bash
+# Check rate-limit status without fetching
+python plaid_balance.py --check
+```
 
 ## Working Integrations
 
@@ -83,9 +96,11 @@ institutions and updating a Google Sheet.
 source .venv/bin/activate
 
 # Fetch balances (automated accounts)
-python plaid_balance.py      # Plaid bank/credit/loan/investment accounts
-python mercury_balance.py    # Mercury banking (also via Plaid)
-python zillow_balance.py     # Home value (Zestimate)
+python plaid_balance.py --force   # Real-time fetch — use for spreadsheet updates only ($0.10/item)
+python plaid_balance.py --cached  # Cached fetch — use for dev/debug (free)
+python plaid_balance.py --check   # Show time since last real-time fetch, no API call
+python mercury_balance.py         # Mercury banking (direct API, not Plaid-billed)
+python zillow_balance.py          # Home value (Zestimate)
 
 # Manual reference (not used in spreadsheet automation)
 python coinbase_balance.py   # Coinbase Advanced Trade only
@@ -151,8 +166,6 @@ Key fields in each account entry:
 
 - Assets: positive numbers
 - Liabilities: NEGATIVE numbers (Plaid returns them as negative, use as-is)
-
-**IMPORTANT:** Always fetch fresh balances before updating. Never use cached data.
 
 Some investment accounts use the `investments` product to fetch holdings.
 

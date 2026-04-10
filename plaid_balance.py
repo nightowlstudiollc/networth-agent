@@ -4,12 +4,14 @@
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 import plaid
 from dotenv import load_dotenv
 from plaid.api import plaid_api
 from plaid.model.accounts_balance_get_request import AccountsBalanceGetRequest
+from plaid.model.accounts_get_request import AccountsGetRequest
 from plaid.model.investments_holdings_get_request import (
     InvestmentsHoldingsGetRequest,
 )
@@ -31,6 +33,11 @@ else:
     host = plaid.Environment.Production
     PLAID_SECRET = os.getenv("PLAID_SECRET")
     ITEMS_FILE = Path(__file__).parent / ".plaid_items.json"
+
+# Rate-limiting: prevent accidental real-time fetches during dev sessions.
+# accounts/balance/get is billed at $0.10/item; accounts/get is free (cached).
+LAST_FETCH_FILE = Path(__file__).parent / ".plaid_last_realtime_fetch"
+MIN_FETCH_INTERVAL_HOURS = 23
 
 PLAID_CLIENT_ID = os.getenv("PLAID_CLIENT_ID")
 
@@ -58,6 +65,22 @@ def load_items() -> dict:
         if content:
             return json.loads(content)
     return {}
+
+
+def hours_since_last_realtime_fetch() -> float | None:
+    """Hours since last real-time fetch, or None if never."""
+    if not LAST_FETCH_FILE.exists():
+        return None
+    try:
+        ts = float(LAST_FETCH_FILE.read_text().strip())
+        return (time.time() - ts) / 3600
+    except (ValueError, OSError):
+        return None
+
+
+def record_realtime_fetch() -> None:
+    """Stamp the current time as the last successful real-time fetch."""
+    LAST_FETCH_FILE.write_text(str(time.time()))
 
 
 def get_investment_holdings(access_token: str, institution_name: str) -> tuple:
@@ -91,8 +114,14 @@ def get_investment_holdings(access_token: str, institution_name: str) -> tuple:
             return [], {}, f"{institution_name}: {error_code} - {error_msg}"
 
 
-def get_plaid_balances() -> dict:
+def get_plaid_balances(realtime: bool = True) -> dict:
     """Fetch all Plaid account balances.
+
+    Args:
+        realtime: If True (default), use accounts/balance/get for a live pull
+            (billed at $0.10/item). If False, use accounts/get for Plaid's
+            cached data (free). Cached data is typically a few hours stale —
+            fine for dev/debug work, not appropriate for spreadsheet updates.
 
     Returns:
         dict with:
@@ -102,6 +131,7 @@ def get_plaid_balances() -> dict:
             - 'accounts': list of account details
             - 'holdings': list of investment holdings
             - 'errors': list of any errors encountered
+            - 'realtime': bool indicating which endpoint was used
     """
     items = load_items()
 
@@ -113,6 +143,7 @@ def get_plaid_balances() -> dict:
             "accounts": [],
             "holdings": [],
             "errors": ["No items found. Run plaid_link_server.py first."],
+            "realtime": realtime,
         }
 
     all_accounts = []
@@ -166,9 +197,14 @@ def get_plaid_balances() -> dict:
                 total_assets += value
 
         try:
-            # Use balance/get for real-time balances
-            req = AccountsBalanceGetRequest(access_token=access_token)
-            response = client.accounts_balance_get(req)
+            # accounts/balance/get: real-time pull, billed $0.10/item.
+            # accounts/get: Plaid-cached, free. Use for dev/debug.
+            if realtime:
+                req = AccountsBalanceGetRequest(access_token=access_token)
+                response = client.accounts_balance_get(req)
+            else:
+                req = AccountsGetRequest(access_token=access_token)
+                response = client.accounts_get(req)
             accounts = response.to_dict().get("accounts", [])
 
             for acc in accounts:
@@ -249,12 +285,99 @@ def get_plaid_balances() -> dict:
         "accounts": all_accounts,
         "holdings": all_holdings,
         "errors": errors,
+        "realtime": realtime,
     }
 
 
 def main():
     """Print Plaid balances."""
-    result = get_plaid_balances()
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Fetch Plaid account balances.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Cost control:\n"
+            "  accounts/balance/get (--force or first run) costs $0.10/item.\n"
+            "  accounts/get         (--cached)             is free.\n\n"
+            "Typical usage:\n"
+            "  Weekly spreadsheet update : python plaid_balance.py --force\n"
+            "  Dev / debug session       : python plaid_balance.py --cached\n"
+        ),
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Force a real-time fetch (accounts/balance/get), bypassing the "
+            f"{MIN_FETCH_INTERVAL_HOURS}-hour rate limit. "
+            "Use for the weekly spreadsheet update."
+        ),
+    )
+    mode.add_argument(
+        "--cached",
+        action="store_true",
+        help=(
+            "Use Plaid cached balances (accounts/get). Free, no rate limit. "
+            "Data may be a few hours stale — fine for dev/debug work."
+        ),
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Show time since last real-time fetch and exit.",
+    )
+    args = parser.parse_args()
+
+    # --check: status only, no fetch
+    if args.check:
+        hours = hours_since_last_realtime_fetch()
+        if hours is None:
+            print("No real-time fetch on record.")
+        else:
+            print(f"Last real-time fetch: {hours:.1f}h ago.")
+            if hours < MIN_FETCH_INTERVAL_HOURS:
+                remaining = MIN_FETCH_INTERVAL_HOURS - hours
+                print(
+                    f"Rate limit active — {remaining:.1f}h until next "
+                    "allowed fetch (use --force to override)."
+                )
+            else:
+                print("Rate limit clear.")
+        sys.exit(0)
+
+    # Determine endpoint
+    if args.cached:
+        realtime = False
+    elif args.force:
+        realtime = True
+    else:
+        # Default: enforce rate limit to prevent accidental billable calls
+        # during dev/debug Claude Code sessions.
+        hours = hours_since_last_realtime_fetch()
+        if hours is not None and hours < MIN_FETCH_INTERVAL_HOURS:
+            remaining = MIN_FETCH_INTERVAL_HOURS - hours
+            print(
+                f"Rate limit: last real-time fetch was {hours:.1f}h ago "
+                f"({remaining:.1f}h until next allowed).",
+                file=sys.stderr,
+            )
+            print(
+                "  --force   Run now anyway (weekly spreadsheet update)\n"
+                "  --cached  Use free cached data (dev/debug)",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        realtime = True  # First run, or rate limit has cleared
+
+    result = get_plaid_balances(realtime=realtime)
+
+    # Stamp successful real-time fetch
+    if realtime and not result["errors"]:
+        record_realtime_fetch()
+
+    fetch_label = "real-time" if realtime else "cached"
 
     if result["errors"]:
         print("Errors:", file=sys.stderr)
@@ -273,7 +396,7 @@ def main():
             by_institution[inst] = []
         by_institution[inst].append(acc)
 
-    print(f"Plaid Balances (env: {PLAID_ENV})")
+    print(f"Plaid Balances (env: {PLAID_ENV}, {fetch_label})")
     print("=" * 60)
 
     for institution, accounts in sorted(by_institution.items()):
