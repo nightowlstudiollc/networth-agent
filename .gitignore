@@ -18,6 +18,7 @@ config.yaml
 # Plaid proxy runtime
 .plaid_proxy.pid
 .plaid_mcp_proxy.log
+.plaid_last_realtime_fetch
 
 # Claude memory (may contain PII/sensitive data)
 memory/
