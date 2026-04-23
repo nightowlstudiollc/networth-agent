@@ -27,3 +27,12 @@ memory/
 .venv/
 __pycache__/
 *.pyc
+
+# Balance history (local DB; backed up to Drive)
+history.db
+history.db-journal
+history.db-wal
+history.db-shm
+
+# Git worktrees (isolated workspaces for feature branches)
+.worktrees/

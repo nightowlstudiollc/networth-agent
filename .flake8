@@ -1,0 +1,7 @@
+[flake8]
+# Match black's default line length so the two tools stop disagreeing.
+# Existing code is all <= 79 chars, so this only affects new lines that
+# black chooses to keep on one line.
+max-line-length = 88
+# Black handles E203 (whitespace before ':') differently from PEP8 — trust black.
+extend-ignore = E203

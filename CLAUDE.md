@@ -50,6 +50,33 @@ institutions and updating a Google Sheet.
 python plaid_balance.py --check
 ```
 
+## Balance history (`balance_history.py`)
+
+A local SQLite database (`history.db`, gitignored) stores weekly snapshots of all
+balances plus Plaid holdings. Backed up to Drive after each snapshot.
+
+**Weekly flow:**
+
+```
+plaid_balance.py --force  →  enter manual balances in sheet  →
+balance_history.py snapshot  →  balance_history.py diff
+```
+
+`--force` ends with a nudge reminding the user to run `snapshot` after entering
+manual balances. Do not call `snapshot` yourself automatically — the user enters
+manual rows between those two steps.
+
+**Subcommands:** `snapshot`, `diff`, `snapshots`, `annotate`,
+`restore-from-drive`. See `README.md` for usage examples.
+
+Per-account prior-week balances are not recoverable — the sheet never
+saved them. Snapshot 1 (whenever the user first ran `snapshot`) is the
+inception point; weeks accumulate from there.
+
+`history.db` is local-only. If the file is missing, run `restore-from-drive` —
+do not re-initialize by running `snapshot` on an empty DB (that would lose
+prior history).
+
 ## Working Integrations
 
 | Source | Method | Script |
@@ -159,8 +186,12 @@ Key fields in each account entry:
 - `institution`: Plaid institution name (use exact name returned by `plaid_accounts.py`)
 - `name`: Account name as returned by Plaid
 - `mask`: Last 4 digits of account number
-- `row`: Spreadsheet row number to update
+- `id`: Stable slug matching column H of the sheet — used to resolve the row at write-time
 - `type`: `asset` or `liability`
+
+**Row resolution:** Do **not** store row numbers — read column H of the Net
+Worth sheet and match `id` to find the current row. Multiple Plaid accounts may
+share an `id` (their balances are summed onto the same sheet row).
 
 **Sign convention:**
 
