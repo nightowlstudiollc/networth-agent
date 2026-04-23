@@ -6,9 +6,14 @@
 #   - institution: the name Plaid uses for this institution
 #   - name: the account name Plaid returns (run plaid_accounts.py to see these)
 #   - mask: last 4 digits of the account number
-#   - row: row number in your net worth spreadsheet
+#   - id: a stable slug that also appears in column H of your sheet (e.g. "primary-checking")
 #   - label: human-readable label (for reference only, not written to sheet)
 #   - type: asset or liability
+#
+# Rows are resolved at write-time by matching `id` against column H of the
+# sheet — row numbers shift as rows are added/removed, so do NOT store them
+# here. Multiple Plaid accounts can share the same `id` (the sheet will get
+# the aggregated balance on one row).
 #
 # Sign convention: assets positive, liabilities NEGATIVE (Plaid returns
 # credit/loan balances as negative — use them as-is).
@@ -23,7 +28,7 @@ accounts:
   - institution: "My Bank"
     name: "CHECKING"
     mask: "1234"
-    row: 5
+    id: "primary-checking"
     label: "Primary Checking"
     type: asset
 
@@ -31,7 +36,7 @@ accounts:
   - institution: "My Bank"
     name: "CREDIT CARD"
     mask: "5678"
-    row: 20
+    id: "rewards-visa"
     label: "Rewards Visa"
     type: liability
 
@@ -39,6 +44,13 @@ accounts:
   - institution: "Brokerage Name"
     name: "Individual Brokerage"
     mask: "9012"
-    row: 10
+    id: "taxable-brokerage"
     label: "Taxable Brokerage"
+    type: asset
+
+# Manual accounts — no Plaid automation, listed here only so their `id`
+# values are reserved and can be referenced by future automation.
+manual_accounts:
+  - id: "paper-savings"
+    label: "Paper Savings"
     type: asset

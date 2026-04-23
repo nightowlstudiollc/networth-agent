@@ -66,7 +66,10 @@ cp config.example.yaml config.yaml
 cp .mcp.example.json .mcp.json
 ```
 
-Edit `accounts.yaml` with your institution→spreadsheet-row mapping.
+Edit `accounts.yaml` with your institution→ID mapping. Each account references a
+stable slug (e.g. `mercury-checking`) that must also appear in column H of your
+spreadsheet — rows are resolved at write-time by matching the ID, so balances
+land on the right row even when the sheet is reordered.
 Run `python plaid_accounts.py` after linking to see exact Plaid account names.
 
 Edit `config.yaml` with your Google service account path, Drive folder ID, and Zillow URL.
@@ -109,6 +112,64 @@ python zillow_balance.py
 
 With Claude Code, these run automatically when you ask it to update the spreadsheet.
 
+## History & deltas
+
+`balance_history.py` captures weekly snapshots into a local SQLite database
+(`history.db`, gitignored) and backs them up to Google Drive. This is what lets
+you see week-over-week changes instead of just the latest balance.
+
+### Weekly workflow
+
+```bash
+# 1. Fetch automated balances and write them to the sheet.
+python plaid_balance.py --force
+python mercury_balance.py
+python zillow_balance.py
+
+# 2. Enter any manual balances (Fidelity, Apple Card, etc.) in the sheet.
+
+# 3. Snapshot the sheet + Plaid holdings into history.db.
+#    `snapshot` needs PLAID_CLIENT_ID + PLAID_SECRET; if you use 1Password
+#    CLI, wrap it: `op run --env-file=.claude/secrets.op -- python ...`
+python balance_history.py snapshot
+
+# 4. See what changed week-over-week.
+python balance_history.py diff
+```
+
+### Commands
+
+```bash
+python balance_history.py snapshot               # Capture this week
+python balance_history.py diff                   # Last week vs. this week
+python balance_history.py diff --weeks-back 4    # 4 weeks ago vs. now
+python balance_history.py snapshots              # List recent captures
+python balance_history.py annotate <id> <week> "note"   # Add context
+python balance_history.py restore-from-drive     # Recover db from Drive
+```
+
+Example `diff` output:
+
+```text
+                  Δ  2026-04-06  →  2026-04-13
+┏━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━━━━┓
+┃ Label           ┃        Old ┃        New ┃        Δ ┃ Market ┃  Flow ┃ Note     ┃
+┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━━━━┩
+│ Brokerage       │ $50,000.00 │ $51,600.00 │ +$1,600  │ +$500  │ +$1,100│          │
+│ Checking        │  $1,000.00 │  $1,500.00 │   +$500  │        │        │ paycheck │
+├─────────────────┼────────────┼────────────┼──────────┼────────┼───────┼──────────┤
+│ Net change      │            │            │ +$2,100  │        │        │          │
+└─────────────────┴────────────┴────────────┴──────────┴────────┴───────┴──────────┘
+```
+
+For investment accounts with Plaid holdings, `market` and `flow` columns decompose
+the delta into price movement (what the market did) vs. contributions/withdrawals
+(what you did).
+
+`history.db` is gitignored and mirrored to your configured Drive folder after
+each snapshot. Use `restore-from-drive` on a new machine or after losing the
+local file.
+
 ## Architecture
 
 ```
@@ -127,7 +188,7 @@ refresh transparently, so Claude Code sessions don't break when the token expire
 ## Account mapping
 
 `accounts.yaml` (gitignored — copy from `accounts.example.yaml`) maps each Plaid
-account to a row in your spreadsheet:
+account to a stable slug, which must also appear in column H of your spreadsheet:
 
 ```yaml
 spreadsheet_id: "your_spreadsheet_id"
@@ -136,10 +197,13 @@ accounts:
   - institution: "Chase"
     name: "CREDIT CARD"
     mask: "1234"
-    row: 15
+    id: "chase-sapphire-reserve"
     label: "Sapphire Reserve"
     type: liability
 ```
+
+Multiple Plaid accounts can share an `id` — their balances are summed before
+being written to that row (useful for joint accounts split across products).
 
 Run `python plaid_accounts.py` to see the exact institution and account names
 that Plaid returns for your linked accounts.

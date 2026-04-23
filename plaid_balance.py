@@ -58,6 +58,48 @@ api_client = plaid.ApiClient(configuration)
 client = plaid_api.PlaidApi(api_client)
 
 
+def aggregate_balances_by_id(
+    accounts: list[dict],
+    holdings: list[dict],
+    yaml_accounts: list[dict],
+) -> dict[str, float]:
+    """Aggregate Plaid accounts + holdings into per-sheet-row balances.
+
+    Liabilities (per yaml `type`) are returned negative. Multiple Plaid
+    accounts sharing a yaml `id` sum into that id. Unmapped Plaid accounts
+    are skipped.
+    """
+    by_inst_mask = {
+        (a["institution"], a["mask"]): (a["id"], a["type"]) for a in yaml_accounts
+    }
+    account_id_to_yaml = {}
+    result: dict[str, float] = {}
+
+    for acc in accounts:
+        key = (acc.get("institution"), acc.get("mask"))
+        mapped = by_inst_mask.get(key)
+        if not mapped:
+            continue
+        yaml_id, yaml_type = mapped
+        if acc.get("account_id"):
+            account_id_to_yaml[acc["account_id"]] = (yaml_id, yaml_type)
+        bal = acc.get("balance")
+        if bal is None:
+            continue
+        if yaml_type == "liability":
+            bal = -bal
+        result[yaml_id] = result.get(yaml_id, 0.0) + bal
+
+    for h in holdings:
+        mapped = account_id_to_yaml.get(h.get("account_id"))
+        if not mapped:
+            continue
+        yaml_id, _ = mapped
+        result[yaml_id] = result.get(yaml_id, 0.0) + (h.get("value") or 0.0)
+
+    return result
+
+
 def load_items() -> dict:
     """Load saved items from file."""
     if ITEMS_FILE.exists():
@@ -226,6 +268,7 @@ def get_plaid_balances(realtime: bool = True) -> dict:
                         "type": acc_type,
                         "subtype": subtype,
                         "mask": acc.get("mask"),
+                        "account_id": account_id,
                         "balance": 0,  # Balance is in holdings
                         "balance_from_holdings": True,
                         "currency": balances.get("iso_currency_code", "USD"),
@@ -253,6 +296,7 @@ def get_plaid_balances(realtime: bool = True) -> dict:
                     "type": acc_type,
                     "subtype": subtype,
                     "mask": acc.get("mask"),
+                    "account_id": account_id,
                     "balance": balance,
                     "currency": balances.get("iso_currency_code", "USD"),
                 }
@@ -447,6 +491,125 @@ def main():
     print(f"  Total Assets:      ${result['total_assets']:>12,.2f}")
     print(f"  Total Liabilities: ${result['total_liabilities']:>12,.2f}")
     print(f"  Net Total:         ${result['net_total']:>12,.2f}")
+
+    # After a billable real-time fetch, push balances to the sheet and
+    # nudge the user to enter the remaining manual rows before snapshotting.
+    # If the write fails, the fetched values above are the only record —
+    # surface that clearly so the user can paste them in manually.
+    if args.force:
+        import yaml
+
+        with open("accounts.yaml") as f:
+            cfg = yaml.safe_load(f)
+        yaml_accounts = cfg.get("accounts", [])
+        manual_ids = [m["id"] for m in cfg.get("manual_accounts", [])]
+        spreadsheet_id = cfg.get("spreadsheet_id")
+        if not spreadsheet_id:
+            print(
+                "\n⚠ accounts.yaml missing spreadsheet_id — balances above "
+                "will not be written. Fix the config and paste manually.",
+                file=sys.stderr,
+            )
+            return
+
+        balances_by_id = aggregate_balances_by_id(
+            result["accounts"], result.get("holdings", []), yaml_accounts
+        )
+
+        from google_sheets_client import SheetsClient
+        from history_sheet import write_balances_to_sheet
+
+        try:
+            sheet_client = SheetsClient()
+            write_balances_to_sheet(
+                sheet_client, spreadsheet_id, "Net Worth", balances_by_id
+            )
+        except Exception as e:
+            print(
+                f"\n⚠ Sheet write failed after billable fetch: {e}\n"
+                "  The balances printed above are the only record — "
+                "paste them into column B manually if needed.",
+                file=sys.stderr,
+            )
+            return
+
+        print()
+        print(f"✔ Wrote {len(balances_by_id)} automated rows to the spreadsheet.")
+        n_manual = len(manual_ids)
+        if n_manual:
+            preview = ", ".join(manual_ids[:5]) + ("..." if n_manual > 5 else "")
+            print(f"ℹ {n_manual} manual rows may still need attention: {preview}")
+        print("→ After entering any manual balances, run:")
+        print("    python balance_history.py snapshot")
+
+
+def fetch_all_holdings(items: dict) -> list[dict]:
+    """Fetch holdings for every item with the investments product.
+
+    Returns a flat list of dicts with stable keys for consumption by
+    history.py. Does not hit accounts/balance/get — no per-call billing.
+    investments/holdings/get is on the monthly Investments subscription.
+
+    Errors from accounts_get or get_investment_holdings are logged to
+    stderr and the item is skipped, rather than aborting the whole fetch.
+    """
+    import sys
+
+    all_holdings: list[dict] = []
+    for _item_id, item in items.items():
+        if "investments" not in item.get("products", []):
+            continue
+        access_token = item["access_token"]
+        institution = item.get("institution_name", "Unknown")
+
+        try:
+            acct_req = AccountsGetRequest(access_token=access_token)
+            acct_resp = client.accounts_get(acct_req)
+            acct_map = {
+                a["account_id"]: (a.get("name", ""), a.get("mask", ""))
+                for a in acct_resp.to_dict()["accounts"]
+            }
+        except Exception as e:
+            print(
+                f"Warning: accounts_get failed for {institution}: {e}",
+                file=sys.stderr,
+            )
+            acct_map = {}
+
+        res = get_investment_holdings(access_token, institution)
+        holdings, securities, err = res
+        if err:
+            print(
+                f"Warning: holdings fetch failed for {institution}: {err}",
+                file=sys.stderr,
+            )
+            continue
+        for h in holdings:
+            sec = securities.get(h.get("security_id"), {})
+            value = h.get("institution_value")
+            if value is None:
+                qty = h.get("quantity") or 0
+                price = h.get("institution_price") or 0
+                value = qty * price
+            aid = h.get("account_id")
+            name, mask = acct_map.get(aid, ("", ""))
+            all_holdings.append(
+                {
+                    "institution": institution,
+                    "account_id": aid,
+                    "account_name": name,
+                    "account_mask": mask,
+                    "security_id": h.get("security_id"),
+                    "ticker": sec.get("ticker_symbol"),
+                    "name": sec.get("name", "Unknown"),
+                    "type": sec.get("type"),
+                    "quantity": h.get("quantity"),
+                    "price": h.get("institution_price"),
+                    "value": value,
+                    "currency": h.get("iso_currency_code", "USD"),
+                }
+            )
+    return all_holdings
 
 
 if __name__ == "__main__":

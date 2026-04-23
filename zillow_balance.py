@@ -158,6 +158,34 @@ def format_currency(amount: int | float | None) -> str:
     return f"${amount:,.0f}"
 
 
+def _write_to_sheet(zestimate: int | float) -> bool:
+    """Write the Zestimate to column B of the zillow-home row.
+
+    Returns True on success, False if config is unavailable (e.g. tests, CI
+    without accounts.yaml). Any other failure (auth, missing row, network)
+    is raised so the caller surfaces it — the scrape already succeeded.
+    """
+    try:
+        import yaml
+
+        with open(Path(__file__).parent / "accounts.yaml") as f:
+            cfg = yaml.safe_load(f)
+    except (FileNotFoundError, ImportError):
+        return False
+    spreadsheet_id = cfg.get("spreadsheet_id")
+    if not spreadsheet_id:
+        return False
+
+    from google_sheets_client import SheetsClient
+    from history_sheet import write_balances_to_sheet
+
+    client = SheetsClient()
+    write_balances_to_sheet(
+        client, spreadsheet_id, "Net Worth", {"zillow-home": zestimate}
+    )
+    return True
+
+
 def main():
     """Fetch and display Zestimate."""
     url = sys.argv[1] if len(sys.argv) > 1 else ZILLOW_URL
@@ -191,6 +219,14 @@ def main():
 
         if data["zestimate"]:
             print(f"\nValue: {data['zestimate']}")
+            if _write_to_sheet(data["zestimate"]):
+                print("✔ Wrote zillow-home to the spreadsheet.")
+            else:
+                print(
+                    "ℹ accounts.yaml not configured — skipped sheet write. "
+                    f"Enter {data['zestimate']} in column B of the "
+                    "zillow-home row manually."
+                )
 
     except requests.RequestException as e:
         print(f"Error fetching Zillow page: {e}", file=sys.stderr)
