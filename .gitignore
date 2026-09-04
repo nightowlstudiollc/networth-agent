@@ -33,7 +33,7 @@ NOTES.md
 
 # Design/planning docs. They quote real run output while a feature is being
 # built, so they accumulate institution names, account IDs and balances —
-# 2026-04-13-balance-history-phase-1-plan.md carried live balances. Ignoring
+# a plan file might carry live balances. Ignoring
 # the directory rather than scrubbing each file: the leak is a property of how
 # plan docs get written, so the next one would reintroduce it.
 docs/plans/
