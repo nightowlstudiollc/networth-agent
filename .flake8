@@ -1,0 +1,14 @@
+[flake8]
+# Match black's default line length so the two tools stop disagreeing.
+# Existing code is all <= 79 chars, so this only affects new lines that
+# black chooses to keep on one line.
+max-line-length = 88
+# Black handles E203 (whitespace before ':') differently from PEP8 — trust black.
+extend-ignore = E203
+# Scripts that bootstrap venv + credentials before third-party imports must
+# place those imports after the bootstrap call (intentional E402).
+per-file-ignores =
+    balance_history.py: E402
+    plaid_balance.py: E402
+    mercury_balance.py: E402
+    coinbase_balance.py: E402

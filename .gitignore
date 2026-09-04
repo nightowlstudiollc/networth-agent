@@ -1,0 +1,64 @@
+# Credentials
+*-credentials.json
+*-service-account.json
+gsheets-mcp-*.json
+.env
+.plaid_token.json
+.plaid_items.json
+.plaid_items_sandbox.json
+.plaid_client_user_id
+.plaid_user.json
+
+# Personal configuration (copy from *.example.* files to create these)
+accounts.yaml
+config.yaml
+.mcp.json
+.claude/secrets.op
+
+# Private working notes — real institution names, balances, account detail.
+# Gitignored so sync-to-public.sh (which stages via `git archive HEAD`)
+# cannot see them. Do NOT add an exclude list to the sync script instead:
+# untracked is the guarantee that cannot go stale. See NOTES.example.md.
+NOTES.md
+
+# Claude Code transcript dumps. Written into the repo root by the CLI, and they
+# quote whatever the session touched — institution names, balances, masks. Same
+# reasoning as NOTES.md: keep them untracked so the sync structurally cannot
+# see them.
+[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]-*.txt
+
+# Local dev/agent working state — not product code, never publish
+.ralph/
+.claude/plans/
+
+# Design/planning docs. They quote real run output while a feature is being
+# built, so they accumulate institution names, account IDs and balances —
+# 2026-04-13-balance-history-phase-1-plan.md carried live balances. Ignoring
+# the directory rather than scrubbing each file: the leak is a property of how
+# plan docs get written, so the next one would reintroduce it.
+docs/plans/
+
+# Plaid proxy runtime
+.plaid_proxy.pid
+.plaid_mcp_proxy.log
+.plaid_last_realtime_fetch
+
+# Plaid Link server runtime
+.plaid_link_server.pid
+
+# Claude memory (may contain PII/sensitive data)
+memory/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Balance history (local DB; backed up to Drive)
+history.db
+history.db-journal
+history.db-wal
+history.db-shm
+
+# Git worktrees (isolated workspaces for feature branches)
+.worktrees/
