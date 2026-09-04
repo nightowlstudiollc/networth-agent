@@ -13,8 +13,7 @@ balances, and updating the sheet without manual intervention.
 - Pulls live balances from connected institutions via [Plaid](https://plaid.com)
 - Fetches your home's Zestimate from Zillow
 - Pulls Mercury and Coinbase balances via direct APIs
-- Writes everything to a configured Google Sheet
-- Manages Plaid OAuth token refresh transparently via a local proxy
+- Writes everything to a configured Google Sheet via the Sheets v4 API
 
 ## Requirements
 
@@ -33,8 +32,7 @@ balances, and updating the sheet without manual intervention.
 | Mercury | Direct API | Requires Mercury API token |
 | Coinbase | Advanced Trade API | Automated; balances include funds held by open orders |
 | Home value | Zillow scraping | Zestimate only; fragile by nature |
-| Google Sheets | MCP server | `mcp-google-sheets` |
-| Plaid Dashboard | MCP server | Via local token-refresh proxy |
+| Google Sheets | Sheets v4 API | Service account; `google_sheets_client.py` |
 
 ### Institutions Plaid may not cover
 
@@ -102,12 +100,20 @@ PLAID_ENV=production python plaid_link_server.py
 
 Open `http://localhost:8080` and connect your institutions.
 
-### 5. Configure Google Sheets MCP
+### 5. Configure Google Sheets access
 
-Update `.mcp.json` with your service account path and Drive folder ID, or reference
-`config.yaml` directly.
+The balance scripts write to the sheet through the Sheets v4 API using a Google
+service account — no MCP server is involved. Set `service_account_path` and the
+spreadsheet ID in `config.yaml`, and share the sheet with the service account's
+email address (found in the JSON key file) so it can write.
 
-### 6. (Optional) Install the Coinbase MCP server
+### 6. (Optional) Install the Google Sheets MCP server
+
+Nothing in the automation needs it. A Sheets MCP server is useful for interactive
+work — browsing or editing the sheet from a Claude Code session without writing a
+script. `.mcp.example.json` has a working `mcp-google-sheets` entry to copy.
+
+### 7. (Optional) Install the Coinbase MCP server
 
 `coinbase_balance.py` talks to the Advanced Trade API directly and does not need
 an MCP server. The Coinbase MCP is useful for interactive work — inspecting
@@ -137,7 +143,7 @@ and **Transfer**; this project only reads balances, so neither is required.
 Read-only keys cannot place orders or move funds, which is the safer default for
 an automated net-worth tracker.
 
-### 7. Run
+### 8. Run
 
 ```bash
 source .venv/bin/activate
@@ -216,11 +222,13 @@ mount) for automatic offsite backup. Use `restore-from-backup` to recover.
 
 ```
 Claude Code
-  ├── mcp-google-sheets   → reads/writes your spreadsheet
   ├── plaid_balance.py    → direct Plaid API for real-time balances
   ├── mercury_balance.py  → Mercury Banking API
   ├── zillow_balance.py   → Zillow Zestimate scraper
   └── coinbase_balance.py → Coinbase Advanced Trade API
+
+Each script writes its balances to the sheet itself, through
+google_sheets_client.py (Sheets v4 API + service account).
 ```
 
 ## Account mapping

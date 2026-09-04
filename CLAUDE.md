@@ -112,10 +112,14 @@ prior history).
 
 | Source | Method | Script |
 | -------- | -------- | -------- |
-| Google Sheets | MCP (mcp-google-sheets) | - |
+| Google Sheets | Sheets v4 API (service account) | `google_sheets_client.py` |
 | Plaid (banks/cards) | Direct API | `plaid_balance.py` |
 | Mercury | Direct API | `mercury_balance.py` |
+| Coinbase | Advanced Trade API | `coinbase_balance.py` |
 | Zillow | Web scraping | `zillow_balance.py` |
+
+The balance scripts write to the sheet themselves via `google_sheets_client.py`.
+No MCP server sits in the automation path.
 
 ## Manual Accounts
 
@@ -142,10 +146,15 @@ decision process.
 > OAuth began returning 404. `plaid_mcp_proxy.py` / `plaid_token.py` remain on
 > disk for manual revival. `PLAID_MCP_TOKEN` is no longer needed.
 
-**Google Sheets MCP** (configured in `.mcp.json`, generated from `config.yaml`):
+**Google service account** (paths live in `config.yaml`):
 
-- `SERVICE_ACCOUNT_PATH` - Path to Google service account JSON
-- `DRIVE_FOLDER_ID` - Google Drive folder ID
+- `service_account_path` - Path to the Google service account JSON. Read by
+  `google_sheets_client.py`; the sheet must be shared with that account's email.
+- `drive_folder_id` - Google Drive folder ID for `history.db` backups.
+
+A Sheets MCP server is optional and used only for interactive work in a Claude
+Code session. `.mcp.example.json` has an `mcp-google-sheets` entry to copy; the
+same two values are passed to it as `SERVICE_ACCOUNT_PATH` and `DRIVE_FOLDER_ID`.
 
 ## Commands
 
