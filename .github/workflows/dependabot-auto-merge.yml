@@ -10,6 +10,6 @@ permissions:
 
 jobs:
   dependabot-auto-merge:
-    uses: smartwatermelon/github-workflows/.github/workflows/dependabot-auto-merge.yml@054f2f7f153fa51a35a01f8709cc15f0a942f293 # dependabot-auto-merge-v2
+    uses: smartwatermelon/github-workflows/.github/workflows/dependabot-auto-merge.yml@dependabot-auto-merge-v2
     with:
       trusted_namespaces: 'nightowlstudiollc'
