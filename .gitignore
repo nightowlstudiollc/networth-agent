@@ -62,3 +62,9 @@ history.db-shm
 
 # Git worktrees (isolated workspaces for feature branches)
 .worktrees/
+
+# Claude Code local state and the generated .claude/ scaffold.
+# Share a file by negating it: .claude/* then !.claude/<path>
+.claude/*
+!.claude/pre-launch.sh
+!.claude/secrets.op.template
